@@ -7,12 +7,12 @@ spreadsheet column. Provide the script with information about the
 spreadsheet, as well with information about a directory inside your
 file system, where parts, asemblies and drawings are.
 
-Output: next to each cell, on the right side, there will be a conclusion:
-OK - if the drawing was modified later, then the model;
+Output: next to each cell in the conclusion column there will be a conclusion:
+OK - if the drawing was modified later, than the model;
 OUTDATED - if the opposite;
 ERROR - if the script wasn`t able to check.
 
-WARNING: Close the workbook before running the script, or it 
+WARNING: Close the workbook before running the script, or it
 won`t save changes.
 WARNING: It is assumed that each part/assembly has unique name, distinct
 from all th other files in a directory of search.
@@ -23,114 +23,164 @@ import time
 import sys
 import openpyxl
 
-start_time = time.time()
-
 # --------------------------------------------------------------------------
 # Absolute path to an Excel spreadsheet containig parts`/assemblies` names.
-WORKBOOK_PATH = r'Z:\pyscripts\list_test.xlsx'
+WORKBOOK_PATH = r'D:\decimal_num_list.xlsx'
 # Name of a sheet inside the spreadsheet containig parts`/assemblies` names.
-WORKSHEET_NAME = 'Sheet2'
+WORKSHEET_NAME = r'Лист1'
 # Column containig parts`/assemblies` names.
-TARGETED_COLUMN = 'A'
+TARGETED_COLUMN = r'A'
+# Column, into which relults will be put.
+CONCLUSION_COLUMN = r'B'
 # Directory where parts/assemblies are.
-DIRECTORY_OF_SEARCH = r'C:\PDM\Архив_ОГК\\'
+DIRECTORY_OF_SEARCH = r'D:\parts_test\\'
 
 # Setting up an eye-catching style for cells which show some kind of warning.
-warning_colour = openpyxl.styles.colors.Color(rgb='00FF0000')
-warning_fill = openpyxl.styles.fills.PatternFill(
-    patternType='solid', fgColor=warning_colour)
+WARNING_COLOUR = openpyxl.styles.colors.Color(rgb='00FF0000')
+WARNING_FILL = openpyxl.styles.fills.PatternFill(
+    patternType='solid', fgColor=WARNING_COLOUR)
 # --------------------------------------------------------------------------
 
-workbook = openpyxl.load_workbook(WORKBOOK_PATH)
-worksheet = workbook[WORKSHEET_NAME]
 
-# Assembling everything in the targeted column in a list.
-decimals = []
-for cell in worksheet[TARGETED_COLUMN]:
-    decimals.append(cell.value)
-
-print(f'\nInitial decimals: {decimals}')
-
-# Filter for non-string values.
-for decimal in decimals:
-    if not isinstance(decimal, str):
-        decimals.remove(decimal)
-
-# Custom filter for values that are incoherent
-# with projets`s notation convention.
-for decimal in decimals:
-    if (decimal[0] or decimal[1]) not in ['A', 'T', 'А', 'Т', 'А', 'Т']:
-        decimals.remove(decimal)
-
-print(f'Filtered decimals: {decimals}')
-
-
-def find_path_by_name(name, path):
+def find_path_by_decimal(targeted_path, decimal, file_format):
     """
-    The function searches for a file`s path based on it`s name.
+    The function searches for a file`s path based on it`s name (decimal) and format.
 
-    WARNING: It is assumed that each part/assembly has unique name, distinct 
+    Input:
+    path - directory, where to search (string);
+    decimal - name of the file without .format (string);
+    file_format - the file`s format without dot in front (string);
+
+    Output:
+    res - path of the sought-fir file (string);
+
+    Usecase example:
+    model_path = find_path_by_decimal(
+        'D:\parts_test\\', 'АТ.301243.432', 'SLDASM')
+    model_path ---> 'D:\parts_test\assmbl\АТ.301243.432.SLDASM'
+
+    WARNING: It is assumed that each part/assembly has unique name, distinct
     from all th other files in a directory of search.
     """
 
-    result = []
-    for root, dirs, files in os.walk(path):
-        if name in files:
-            result.append(os.path.join(root, name))
-            break
-    return result
+    res = ''
+    for root, dirs, files in os.walk(targeted_path, topdown=False):
+
+        for file in files:
+            # In case if the file has lowercase format.
+            if file.startswith(f'{decimal}.{file_format.lower()}'):
+                res = os.path.join(root, f'{decimal}.{file_format.lower()}')
+                # As long as the file has unique name, it is safe to break
+                # the loop once a single instance is met for the purpose of swiftness.
+                break
+            # In case if the file has uppercase format.
+            if file.startswith(f'{decimal}.{file_format.upper()}'):
+                res = os.path.join(root, f'{decimal}.{file_format.upper()}')
+                # Same.
+                break
+    return res
 
 
-for decimal in decimals:
+def write_conclusion_to_worksheet(worksheet, decimal, conclusion, warning=False):
+    """
+    The writes a specified conclusion next to a cell containing
+    specified file name (decimal).
 
-    try:
+    Input:
+    worksheet - the worksheet, containing the column fith files` names ();
+    decimal - name of the file without .format (string);
+    conclusion - what to write next to the cell (string);
+    warning - flag (False by default) which indicates whether the conclusion
+    should be marked as outstanding (boolean);
 
-        # Finding a path for both model and drawing files.
-        dwg_path = find_path_by_name(f'{decimal}.slddrw', DIRECTORY_OF_SEARCH)
-        if not dwg_path:
-            dwg_path = find_path_by_name(
-                f'{decimal}.SLDDRW', DIRECTORY_OF_SEARCH)
-        if decimal[3] == '3':
-            model_path = find_path_by_name(
-                f'{decimal}.sldasm', DIRECTORY_OF_SEARCH)
-            if not model_path:
-                model_path = find_path_by_name(
-                    f'{decimal}.SLDASM', DIRECTORY_OF_SEARCH)
-        else:
-            model_path = find_path_by_name(
-                f'{decimal}.sldprt', DIRECTORY_OF_SEARCH)
-            if not model_path:
-                model_path = find_path_by_name(
-                    f'{decimal}.SLDPRT', DIRECTORY_OF_SEARCH)
+    Output: None;
 
-        # Getting a 'last modified' time for model and drawing.
-        lastmodified_dwg = os.path.getmtime(dwg_path[0])
-        lastmodified_model = os.path.getmtime(model_path[0])
+    Usecase example:
+    write_conclusion_to_worksheet(worksheet, decimal, conclusion='ERROR', warning=True)
+    """
 
-        # Comparing and writing a conclustin to the Excel spreadsheet.
-        if lastmodified_model > lastmodified_dwg:
-            print(f'{decimal} found to be not up to date!')
-            for cell in worksheet[TARGETED_COLUMN]:
-                if cell.value == decimal:
-                    worksheet[f'B{cell.row}'] = 'OUTDATED'
-                    worksheet[f'B{cell.row}'].fill = warning_fill
-        else:
-            print(f'{decimal} is up to date.')
-            for cell in worksheet[TARGETED_COLUMN]:
-                if cell.value == decimal:
-                    worksheet[f'B{cell.row}'] = 'OK'
+    for cell in worksheet[TARGETED_COLUMN]:
+        if cell.value == decimal:
+            worksheet[f'{CONCLUSION_COLUMN}{cell.row}'] = conclusion
+            if warning:
+                worksheet[f'{CONCLUSION_COLUMN}{cell.row}'].fill = WARNING_FILL
 
-    except Exception:
 
-        print(f'Oops! {sys.exc_info()[0]} occurred.')
-        for cell in worksheet[TARGETED_COLUMN]:
-            if cell.value == decimal:
-                worksheet[f'B{cell.row}'] = 'ERROR'
-                worksheet[f'B{cell.row}'].fill = warning_fill
+def main():
+    """
+    Main method.
+    """
+    start_time = time.time()
 
-workbook.save(WORKBOOK_PATH)
+    # Connecting to the workbook and the worksheet inside it.
+    workbook = openpyxl.load_workbook(WORKBOOK_PATH)
+    worksheet = workbook[WORKSHEET_NAME]
 
-end_time = time.time()
-print(
-    f'''Estimated time: {round((end_time - start_time), 2)} 
-    seconds({round((end_time - start_time)/60, 2)} minutes.)\n''')
+    # Assembling everything in the targeted column in a list.
+    decimals = [worksheet[TARGETED_COLUMN][num].value
+                for num in range(len(worksheet[TARGETED_COLUMN]))]
+
+    print(f'\nInitial decimals: {decimals}')
+
+    # Filter for non-string values.
+    decimals = [decimal for decimal in decimals if isinstance(decimal, str)]
+
+    # Custom filter for values that are incoherent
+    # with projets`s notation convention.
+    decimals = [decimal for decimal in decimals
+                if (decimal[0] or decimal[1]) in ['A', 'T', 'А', 'Т', 'А', 'Т']]
+
+    print(f'Filtered decimals: {decimals}')
+
+    for decimal in decimals:
+
+        try:
+
+            # Finding a path for a drawing file.
+            dwg_path = find_path_by_decimal(
+                targeted_path=DIRECTORY_OF_SEARCH,
+                decimal=decimal, file_format='slddrw')
+
+            # Finding a path for a assembly file.
+            if decimal[3] == '3':
+                model_path = find_path_by_decimal(
+                    targeted_path=DIRECTORY_OF_SEARCH,
+                    decimal=decimal, file_format='sldasm')
+
+            # Finding a path for a part file.
+            else:
+                model_path = find_path_by_decimal(
+                    targeted_path=DIRECTORY_OF_SEARCH,
+                    decimal=decimal, file_format='sldprt')
+
+            # Getting a 'last modified' time for model and drawing.
+            lastmodified_dwg = os.path.getmtime(dwg_path)
+            lastmodified_model = os.path.getmtime(model_path)
+
+            # Comparing and writing a conclustin to the Excel spreadsheet.
+            if lastmodified_model > lastmodified_dwg:
+                print(f'{decimal} found to be not up to date!')
+                write_conclusion_to_worksheet(
+                    worksheet, decimal, conclusion='OUTDATED', warning=True)
+
+            else:
+                print(f'{decimal} is up to date.')
+                write_conclusion_to_worksheet(
+                    worksheet, decimal, conclusion='OK', warning=False)
+
+        except Exception:
+
+            print(f'Oops! {sys.exc_info()[0]} occurred.')
+            write_conclusion_to_worksheet(
+                worksheet, decimal, conclusion='ERROR', warning=True)
+
+    workbook.save(WORKBOOK_PATH)
+
+    end_time = time.time()
+    seconds = round((end_time - start_time), 2)
+    minutes = round((seconds/60), 2)
+    print(f'Estimated time: {seconds} seconds (about {minutes} minutes).\n')
+
+
+if __name__ == '__main__':
+    main()
