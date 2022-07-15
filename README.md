@@ -12,6 +12,7 @@ Clone git repo:
 Initialize virtual environment and eneter it:
 
 `virtualenv -p python3 .`
+
 `source bin/activate`
 
 Install dependencies:
@@ -39,3 +40,5 @@ From the project folder run the following command:
     --result-column B \
     --directory /mnt/d/projectAA53
 ```
+
+<img src="assets/demo1.png" width="600">
